@@ -1,6 +1,6 @@
 // README teaser, light and dark (transparent background).  From the repo root:
-//   typst compile --root . --ppi 200 demo/teaser.typ demo/teaser.png
-//   typst compile --root . --ppi 200 --input theme=dark demo/teaser.typ demo/teaser-dark.png
+//   typst compile --root . --ppi 400 demo/teaser.typ demo/teaser.png
+//   typst compile --root . --ppi 400 --input theme=dark demo/teaser.typ demo/teaser-dark.png
 #import "../lib/equalauthors.typ": *
 #let dark = sys.inputs.at("theme", default: "light") == "dark"
 // GitHub's dark-mode text and link colours
