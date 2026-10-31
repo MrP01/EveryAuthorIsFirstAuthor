@@ -1,0 +1,59 @@
+\ProvidesPackage{typst}[2026/10/18 v0.2 Embed Typst in LaTeX]
+\RequirePackage{graphicx}
+\RequirePackage{filecontents}
+\RequirePackage{xparse}
+
+\makeatletter
+\newcommand{\typstflags}{}
+\newcounter{@typstsrc}
+
+\begin{filecontents*}[overwrite]{typst_preamble.typ}
+#set page(width: auto, height: auto, margin: 0em)
+\end{filecontents*}
+
+% Strip the common leading indentation from the embedded source, so that a
+% typst environment may be indented along with the LaTeX around it.
+\begin{filecontents*}[overwrite]{typst_dedent.awk}
+{ line[NR] = $0
+  if ($0 ~ /[^ \t]/) {
+    match($0, /^[ \t]*/)
+    if (!seen || RLENGTH < m) { m = RLENGTH; seen = 1 }
+  }
+}
+END { for (i = 1; i <= NR; i++) print substr(line[i], m + 1) }
+\end{filecontents*}
+
+% Each environment is written to <jobname>-<n>.raw in the output directory
+% (TEXMF_OUTPUT_DIRECTORY with -output-directory, else "."), and one shell
+% command turns it into _typst/<jobname>-<n>.typ next to it, like _minted.
+% That command compiles only when the .typ differs from the last one that
+% compiled (.typ.ok) or the PDF is missing, writes typst's output to
+% <jobname>-<n>.log, echoes it to the terminal on failure, and then deletes
+% the PDF, so a broken figure is an error, never a stale picture.
+\newcommand{\typst@dir}{_typst}
+\NewDocumentEnvironment{typst}{m}{%
+  \stepcounter{@typstsrc}%
+  \edef\@typstfn{\jobname-\the@typstsrc}%
+  \csname filecontents*\endcsname[overwrite]{\@typstfn.raw}%
+}{%
+  \csname endfilecontents*\endcsname
+  \immediate\write18{%
+    d=${TEXMF_OUTPUT_DIRECTORY:-.}; t=$d/\typst@dir; f=$t/\@typstfn;
+    mkdir -p $t; mv -f $d/typst_preamble.typ $d/typst_dedent.awk $t/ 2>/dev/null;
+    { echo "// flags: \typstflags"; cat $t/typst_preamble.typ;
+      awk -f $t/typst_dedent.awk $d/\@typstfn.raw; } > $f.typ;
+    if ! { cmp -s $f.typ $f.typ.ok && test -f $f.pdf; }; then
+      if typst compile \typstflags\space $f.typ $f.pdf > $f.log 2>&1;
+      then cp $f.typ $f.typ.ok;
+      else cat $f.log >&2; rm -f $f.pdf $f.typ.ok; fi;
+    fi;
+    rm -f $d/\@typstfn.raw}%
+  \IfFileExists{\typst@dir/\@typstfn.pdf}{%
+    \includegraphics[#1]{\typst@dir/\@typstfn.pdf}%
+  }{%
+    \PackageError{typst}{Failed to compile \typst@dir/\@typstfn.typ,
+      see \typst@dir/\@typstfn.log}{%
+      Is typst on the PATH, and is the document compiled with -shell-escape?}%
+  }%
+}
+\makeatother

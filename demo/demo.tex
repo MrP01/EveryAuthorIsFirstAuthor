@@ -1,0 +1,37 @@
+% Minimal LaTeX example.  Needs pdflatex or lualatex (microtype letterspacing).
+\documentclass{article}
+% The package lives in ../lib.  Symlinks do not survive an upload to
+% Overleaf (they arrive as text files, and the whole preamble then prints as
+% a stray first page), so the directory is searched explicitly instead:
+% "../lib/" when compiling inside this folder, "lib/" when the compiler runs
+% from the project root, as Overleaf does.
+\makeatletter
+\def\input@path{{../lib/}{lib/}}
+\makeatother
+\usepackage{equalauthors}
+
+\equalauthorsSetup{alpha=1, beta=1}
+\equalauthorsAddAuthor{Peter Waldert}
+\equalauthorsAddAuthor{Benedikt Kantz}
+\equalauthorsAddAuthor{Thomas Köhler}
+\equalauthorsAddAuthor{Erik D. Demaine}
+\equalauthorsAddAuthor{Martin L. Demaine}
+
+\title{A Paper With No First Author}
+\author{\equalauthorsAuthors}
+\date{}
+
+\begin{document}
+  \maketitle
+
+  All five names above are superimposed and all are
+  \equalauthorsWidth\,pt wide. Unstacked, they look like this:
+
+  \begin{center}
+    \equalauthorsAuthorsStacked
+  \end{center}
+
+  The same works for a BibTeX-style name list:
+  \equalauthorsList{Erik D. Demaine and Martin L. Demaine}.
+
+\end{document}

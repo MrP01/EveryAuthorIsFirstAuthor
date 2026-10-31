@@ -1,0 +1,297 @@
+%% equalauthors.sty -- equal-width superimposed author names.
+%% Extends the "every author as first author" idea (Demaine & Demaine,
+%% arXiv:2304.01393) by forcing all superimposed names to one common width,
+%% trading off horizontal glyph scaling against letter tracking.
+\ProvidesExplPackage{equalauthors}{2026/09/01}{1.1}
+  {Equal-width superimposed author names}
+\RequirePackage{graphicx}
+\RequirePackage{microtype}   % provides \textls (letterspace)
+\RequirePackage{xcolor}
+
+\cs_if_exist:NF \textls
+  { \msg_new:nnn { equalauthors } { no-textls }
+      { microtype's~\textls~is~unavailable~(letterspacing~needs~pdfTeX~or~LuaTeX). }
+    \msg_error:nn { equalauthors } { no-textls } }
+
+%% ---- parameters -----------------------------------------------------------
+\fp_new:N \l_equalauthors_alpha_fp   % cost weight on glyph scaling
+\fp_new:N \l_equalauthors_beta_fp    % cost weight on tracking
+\fp_new:N \l_equalauthors_smin_fp
+\fp_new:N \l_equalauthors_smax_fp
+\bool_new:N \l_equalauthors_fix_t_bool   % ignore tracking's contribution to stiffness
+\bool_new:N \l_equalauthors_fix_s_bool   % ignore scaling's contribution to stiffness; force s=1
+\fp_set:Nn \l_equalauthors_alpha_fp {1}
+\fp_set:Nn \l_equalauthors_beta_fp  {1}
+\fp_set:Nn \l_equalauthors_smin_fp  {0.85}
+\fp_set:Nn \l_equalauthors_smax_fp  {1.15}
+\bool_set_false:N \l_equalauthors_fix_t_bool
+\bool_set_false:N \l_equalauthors_fix_s_bool
+\keys_define:nn { equalauthors }
+  {
+    alpha .fp_set:N = \l_equalauthors_alpha_fp,
+    beta  .fp_set:N = \l_equalauthors_beta_fp,
+    smin  .fp_set:N = \l_equalauthors_smin_fp,
+    smax  .fp_set:N = \l_equalauthors_smax_fp,
+    fix_t .bool_set:N = \l_equalauthors_fix_t_bool,
+    fix_s .bool_set:N = \l_equalauthors_fix_s_bool,
+  }
+\NewDocumentCommand \equalauthorsSetup { m } { \keys_set:nn { equalauthors } {#1} }
+
+%% ---- author list ----------------------------------------------------------
+\seq_new:N \g_equalauthors_names_seq   % the document's author list
+\seq_new:N \l_equalauthors_list_seq    % the list currently being typeset
+\NewDocumentCommand \equalauthorsAddAuthor { m }
+  { \seq_gput_right:Nn \g_equalauthors_names_seq {#1} }
+\NewDocumentCommand \equalauthorsClear { }
+  { \seq_gclear:N \g_equalauthors_names_seq }
+
+%% ---- measurement ----------------------------------------------------------
+%% The name is never taken apart.  Splitting a name into characters is
+%% surprisingly hostile -- a UTF-8 character is several tokens on 8-bit
+%% engines, an accent such as \"o is a command plus its letter, and hand-set
+%% characters lose their kerning pairs -- so instead the font machinery does
+%% the letterspacing (microtype's \textls) and we recover the gap count by
+%% measuring the width at two tracking values.  Width is affine in the
+%% tracking, so two measurements determine it exactly.
+\box_new:N \l_equalauthors_box
+\tl_new:N \l_equalauthors_name_tl
+\tl_new:N \l_equalauthors_ls_tl
+\tl_new:N \l_equalauthors_rnd_tl
+\fp_new:N \l_equalauthors_em_fp
+
+\cs_new_protected:Npn \equalauthors_normalise:n #1
+  {
+    \tl_set:Nn \l_equalauthors_name_tl {#1}
+    \fp_set:Nn \l_equalauthors_em_fp { \dim_to_fp:n { 1em } }
+  }
+
+% #1 <- width (pt) of the current name letterspaced by #2 (1/1000 em per gap)
+\cs_new_protected:Npn \equalauthors_measure:Nn #1#2
+  {
+    \hbox_set:Nn \l_equalauthors_box
+      { \equalauthors_textls:nn {#2} { \l_equalauthors_name_tl } }
+    \fp_set:Nn #1 { \dim_to_fp:n { \box_wd:N \l_equalauthors_box } }
+  }
+
+% render: #1 = scale s, #2 = tracking in microtype units (an *integer* number
+% of 1/1000 em per gap; \textls feeds its argument to \ifnum, so a decimal
+% there gives "Missing = inserted for \ifnum").
+\cs_new_protected:Npn \equalauthors_render:nn #1#2
+  {
+    \tl_set:Nx \l_equalauthors_ls_tl { \fp_eval:n { round (#2) } }
+    \scalebox {#1} [1]
+      { \exp_args:NV \equalauthors_textls:nn \l_equalauthors_ls_tl
+          { \l_equalauthors_name_tl } }
+  }
+% \textls also puts half the tracking outside the first and last letter.  That
+% is invisible padding, so cancel it: the box then ends where the ink does,
+% and the measured slope is the tracking between letters only.
+\cs_new_protected:Npn \equalauthors_textls:nn #1#2
+  {
+    \kern \dim_eval:n { -1em * (#1) / 2000 }
+    \textls[#1]{#2}
+    \kern \dim_eval:n { -1em * (#1) / 2000 }
+  }
+
+%% ---- the optimisation -----------------------------------------------------
+\fp_new:N \l_equalauthors_W_fp
+\fp_new:N \l_equalauthors_w_fp \fp_new:N \l_equalauthors_e_fp
+\fp_new:N \l_equalauthors_g_fp \fp_new:N \l_equalauthors_K_fp
+\fp_new:N \l_equalauthors_tmp_fp
+\fp_new:N \l_equalauthors_num_fp \fp_new:N \l_equalauthors_den_fp
+\fp_new:N \l_equalauthors_lam_fp
+\fp_new:N \l_equalauthors_s_fp \fp_new:N \l_equalauthors_t_fp
+\fp_new:N \l_equalauthors_ls_fp
+
+% natural width w, gap count g = dW/dt, mean character width e,
+% stiffness K = w^2/alpha + g^2 e^2/beta
+\cs_new_protected:Npn \equalauthors_stiffness:
+  {
+    \equalauthors_measure:Nn \l_equalauthors_w_fp { 0 }
+    \equalauthors_measure:Nn \l_equalauthors_tmp_fp { 1000 }
+    \fp_set:Nn \l_equalauthors_g_fp
+      { ( \l_equalauthors_tmp_fp - \l_equalauthors_w_fp ) / \l_equalauthors_em_fp }
+    % a single letter measures 0 up to rounding noise; make it exactly 0
+    \fp_set:Nn \l_equalauthors_g_fp
+      { abs ( \l_equalauthors_g_fp ) < 0.001 ? 0 : \l_equalauthors_g_fp }
+    % no tracking is the same as no gaps: K = w^2/alpha, t = 0, s = W/w
+    \bool_if:NT \l_equalauthors_fix_t_bool { \fp_zero:N \l_equalauthors_g_fp }
+    \fp_set:Nn \l_equalauthors_e_fp
+      { \l_equalauthors_w_fp / ( \l_equalauthors_g_fp + 1 ) }
+    \fp_set:Nn \l_equalauthors_K_fp
+      {
+        \l_equalauthors_w_fp * \l_equalauthors_w_fp / \l_equalauthors_alpha_fp
+        + \l_equalauthors_g_fp * \l_equalauthors_g_fp
+          * \l_equalauthors_e_fp * \l_equalauthors_e_fp / \l_equalauthors_beta_fp
+      }
+    \bool_if:NT \l_equalauthors_fix_s_bool
+      {
+        \fp_set:Nn \l_equalauthors_K_fp
+          {
+            \l_equalauthors_g_fp * \l_equalauthors_g_fp
+            * \l_equalauthors_e_fp * \l_equalauthors_e_fp / \l_equalauthors_beta_fp
+          }
+      }
+  }
+
+% W* = (sum w_i/K_i) / (sum 1/K_i)
+\cs_new_protected:Npn \equalauthors_optimal_width:
+  {
+    \fp_zero:N \l_equalauthors_num_fp \fp_zero:N \l_equalauthors_den_fp
+    \seq_map_inline:Nn \l_equalauthors_list_seq
+      {
+        \equalauthors_normalise:n {##1}
+        \equalauthors_stiffness:
+        \fp_add:Nn \l_equalauthors_num_fp
+          { \l_equalauthors_w_fp / \l_equalauthors_K_fp }
+        \fp_add:Nn \l_equalauthors_den_fp { 1 / \l_equalauthors_K_fp }
+      }
+    \fp_set:Nn \l_equalauthors_W_fp
+      { \l_equalauthors_num_fp / \l_equalauthors_den_fp }
+  }
+
+% given \l_equalauthors_W_fp and the current name, set s and t (with clamping)
+\cs_new_protected:Npn \equalauthors_solve:
+  {
+    \equalauthors_stiffness:
+    \fp_set:Nn \l_equalauthors_lam_fp
+      { ( \l_equalauthors_W_fp - \l_equalauthors_w_fp ) / \l_equalauthors_K_fp }
+    \fp_set:Nn \l_equalauthors_s_fp
+      { 1 + \l_equalauthors_lam_fp * \l_equalauthors_w_fp / \l_equalauthors_alpha_fp }
+    % clamp; at a bound, quantise the tracking towards the inside (see below)
+    \tl_set:Nn \l_equalauthors_rnd_tl { round }
+    \fp_compare:nNnT { \l_equalauthors_s_fp } < { \l_equalauthors_smin_fp }
+      {
+        \fp_set_eq:NN \l_equalauthors_s_fp \l_equalauthors_smin_fp
+        \tl_set:Nn \l_equalauthors_rnd_tl { floor }
+      }
+    \fp_compare:nNnT { \l_equalauthors_s_fp } > { \l_equalauthors_smax_fp }
+      {
+        \fp_set_eq:NN \l_equalauthors_s_fp \l_equalauthors_smax_fp
+        \tl_set:Nn \l_equalauthors_rnd_tl { ceil }
+      }
+    \bool_if:NT \l_equalauthors_fix_s_bool
+      {
+        \fp_set:Nn \l_equalauthors_s_fp { 1 }
+        \tl_set:Nn \l_equalauthors_rnd_tl { round }
+      }
+    \fp_compare:nNnTF { \l_equalauthors_g_fp } > { 0 }
+      {
+        \fp_set:Nn \l_equalauthors_t_fp
+          {
+            ( \l_equalauthors_W_fp - \l_equalauthors_s_fp * \l_equalauthors_w_fp )
+            / \l_equalauthors_g_fp
+          }
+        % \scalebox scales the letterspaced name, kerns included, so \textls
+        % gets t/s.  It only takes whole 1/1000 em, so quantise that and give
+        % the residual back to the scale, s = W / (w + g t/s): the width stays
+        % exact, and floor/ceil at a bound keep s inside [smin, smax].
+        \fp_set:Nn \l_equalauthors_ls_fp
+          {
+            \l_equalauthors_rnd_tl ( 1000 * \l_equalauthors_t_fp
+              / ( \l_equalauthors_s_fp * \l_equalauthors_em_fp ) )
+          }
+        \fp_set:Nn \l_equalauthors_s_fp
+          {
+            \l_equalauthors_W_fp
+            / ( \l_equalauthors_w_fp + \l_equalauthors_g_fp
+                * \l_equalauthors_ls_fp * \l_equalauthors_em_fp / 1000 )
+          }
+        \fp_set:Nn \l_equalauthors_t_fp
+          { \l_equalauthors_s_fp * \l_equalauthors_ls_fp * \l_equalauthors_em_fp / 1000 }
+      }
+      {
+        \fp_zero:N \l_equalauthors_t_fp
+        \fp_zero:N \l_equalauthors_ls_fp
+        \fp_set:Nn \l_equalauthors_s_fp
+          { \l_equalauthors_W_fp / \l_equalauthors_w_fp }
+      }
+  }
+
+%% ---- user commands --------------------------------------------------------
+% one name, typeset to the common width
+\cs_new_protected:Npn \equalauthors_one:n #1
+  {
+    \equalauthors_normalise:n {#1}
+    \equalauthors_solve:
+    \hbox_to_wd:nn { \fp_to_dim:n { \l_equalauthors_W_fp } }
+      {
+        \equalauthors_render:nn
+          { \fp_use:N \l_equalauthors_s_fp } { \l_equalauthors_ls_fp }
+        \hss
+      }
+  }
+
+% superimpose whatever is in \l_equalauthors_list_seq
+\cs_new_protected:Npn \equalauthors_block:
+  {
+    \equalauthors_optimal_width:
+    \hbox_to_wd:nn { \fp_to_dim:n { \l_equalauthors_W_fp } }
+      { \seq_map_inline:Nn \l_equalauthors_list_seq
+          { \hbox_overlap_right:n { \equalauthors_one:n {##1} } } \hss }
+  }
+
+% use the document's author list
+\cs_new_protected:Npn \equalauthors_use_authors:
+  { \seq_set_eq:NN \l_equalauthors_list_seq \g_equalauthors_names_seq }
+
+% all authors superimposed (the point of the exercise)
+\NewDocumentCommand \equalauthorsAuthors { }
+  { \group_begin: \equalauthors_use_authors: \equalauthors_block: \group_end: }
+
+% superimpose an ad-hoc BibTeX-style name list "A and B and C".  Wrapped in an
+% extra pair of braces inside a .bib author field, this makes every cited
+% author a first author too:
+%   author = {{\equalauthorsList{Erik D. Demaine and Martin L. Demaine}}}
+\NewDocumentCommand \equalauthorsList { m }
+  {
+    \group_begin:
+      \seq_set_split:Nnn \l_equalauthors_list_seq { ~and~ } {#1}
+      \equalauthors_block:
+    \group_end:
+  }
+
+% all authors, one per line -- same width, for inspection, with a coloured
+% rule down the left edge; redefine its colour with \definecolor.
+\definecolor{equalauthorsrule}{rgb}{0.15,0.35,0.75}
+\NewDocumentCommand \equalauthorsAuthorsStacked { } {
+  \group_begin:
+    \equalauthors_use_authors:
+    \equalauthors_optimal_width:
+    \seq_set_map:NNn \l_tmpa_seq \l_equalauthors_list_seq
+      { \equalauthors_one:n {##1} }
+    \mode_leave_vertical:
+    \hbox:n
+      {
+        \textcolor{equalauthorsrule} { \vrule width 0.3pt }
+        \skip_horizontal:n { 4pt }
+        \begin{tabular}{@{}l@{}}
+          \seq_use:Nn \l_tmpa_seq { \\ }
+        \end{tabular}
+      }
+  \group_end:
+}
+
+% the common width, e.g. for reporting
+\NewDocumentCommand \equalauthorsWidth { } {
+  \group_begin:
+    \equalauthors_use_authors: \equalauthors_optimal_width:
+    \fp_eval:n { round ( \l_equalauthors_W_fp , 2 ) }
+  \group_end: }
+
+% per-author solution as three table cells "w & s & t".
+% The row is built inside a group but emitted outside it: TeX only recognises
+% an alignment tab at the alignment's own group level.
+\tl_new:N \g_equalauthors_row_tl
+\NewDocumentCommand \equalauthorsSolution { m } {
+  \group_begin:
+    \equalauthors_use_authors: \equalauthors_optimal_width:
+    \equalauthors_normalise:n {#1} \equalauthors_solve:
+    \tl_gset:Nx \g_equalauthors_row_tl
+      {
+        \fp_eval:n { round ( \l_equalauthors_w_fp , 2 ) } &
+        \fp_eval:n { round ( \l_equalauthors_s_fp , 4 ) } &
+        \fp_eval:n { round ( \l_equalauthors_t_fp , 3 ) }
+      }
+  \group_end:
+  \tl_use:N \g_equalauthors_row_tl }

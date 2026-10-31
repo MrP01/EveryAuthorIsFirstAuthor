@@ -1,0 +1,7 @@
+[package]
+name = "equalauthors"
+version = "1.0.0"
+entrypoint = "equalauthors.typ"
+authors = ["Peter Waldert"]
+license = "MIT"
+description = "Equal-width superimposed author names (every author as first author)."

@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Minimal numeric style whose only peculiarity is that it fences the author
+     list of each reference between two invisible U+2062 characters, so that a
+     Typst show-regex rule can superimpose exactly that run and nothing else. -->
+<style xmlns="http://purl.org/net/xbiblio/csl" class="in-text" version="1.0">
+  <info>
+    <title>Equal Authors (numeric)</title>
+    <id>https://peter.waldert.at/equalauthors</id>
+    <updated>2026-09-01T00:00:00+00:00</updated>
+  </info>
+  <citation collapse="citation-number">
+    <sort><key variable="citation-number"/></sort>
+    <layout prefix="[" suffix="]" delimiter=", ">
+      <text variable="citation-number"/>
+    </layout>
+  </citation>
+  <bibliography second-field-align="flush">
+    <layout suffix=".">
+      <text variable="citation-number" prefix="[" suffix="]"/>
+      <names variable="author" prefix="&#x2062;" suffix="&#x2062;" delimiter=" and ">
+        <name and="text" delimiter=" and " initialize-with=". "/>
+      </names>
+      <text variable="title" prefix=", &#8220;" suffix="&#8221;"/>
+      <date variable="issued" prefix=", "><date-part name="year"/></date>
+      <text variable="URL" prefix=". "/>
+    </layout>
+  </bibliography>
+</style>
