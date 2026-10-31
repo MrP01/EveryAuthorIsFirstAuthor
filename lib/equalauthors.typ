@@ -56,10 +56,17 @@
 // counterpart of eqa-authors.
 #let eqa-list(names, ..args) = eqa-authors(names.split(" and "), ..args)
 
-// Same widths, one per line -- for inspection.
-#let eqa-authors-stacked(names, ..args) = context {
+// Same widths, one per line -- for inspection, with a coloured rule down the
+// left edge (the same colour as the LaTeX package's).
+#let eqa-rule-color = rgb(15%, 35%, 75%)
+#let eqa-authors-stacked(names, rule: eqa-rule-color, ..args) = context {
   let W = optimal-width(names, ..args.named())
-  stack(dir: ttb, spacing: 0.6em, ..names.map(n => eqa-name(n, W, ..args)))
+  block(
+    stroke: (left: 0.3pt + rule),
+    // overhang as in LaTeX, where the tabular struts reach past cap height and baseline
+    inset: (left: 4pt, top: 0.2em, bottom: 0.35em),
+    stack(dir: ttb, spacing: 0.6em, ..names.map(n => eqa-name(n, W, ..args))),
+  )
 }
 
 // ---------------------------------------------------------------------------
