@@ -12,11 +12,80 @@ An original work by Demaine & Demaine ([arXiv:2304.01393](https://arxiv.org/abs/
 This repo fixes that. Each name is stretched or squeezed, using a horizontal glyph scale `s` and a letter tracking `t`, until all names have one common width `W*`. The distortion is chosen to be as small as possible:
 
 - for a fixed width, the best `(s, t)` for each name has a closed form (Lagrange multipliers);
-- the best common width `W*` is a weighted mean of the natural widths, `W* = (Σ wᵢ/Kᵢ) / (Σ 1/Kᵢ)`.
+- the best common width `W*` is a weighted mean of the natural widths.
 
 It ships as a LaTeX package, a Typst package, a paper, and a Lean proof of every proposition in the paper.
 
 **Read the paper here**: [arXiv:2611.01331](https://arxiv.org/abs/2611.01331).
+
+Example in LaTeX (more in `demo/demo.tex`):
+
+```latex
+\documentclass{article}
+\usepackage[backend=biber, style=numeric]{biblatex}
+\addbibresource{sources.bib}
+\usepackage{equalauthors}
+
+\equalauthorsSetup{alpha=1, beta=1}
+\equalauthorsAddAuthor{Leonhard Euler}
+\equalauthorsAddAuthor{Emmy Noether}
+\equalauthorsAddAuthor{David Chillbert}
+
+\title{A Paper With All First Authors}
+\author{\equalauthorsAuthors}
+\date{}
+
+\begin{document}
+  \maketitle
+
+  All three names above are superimposed and all are
+  \equalauthorsWidth\,pt wide.
+
+  The standard applies to reference lists too, for example~\cite{demaine2023every}.
+  (The automatic biblatex implementation is new!)
+
+  \printbibliography
+\end{document}
+```
+
+Example in Typst (more in `demo/paper.typ`):
+
+```typst
+#import "lib/equalauthors.typ": *
+
+#show: equal-references  // superimpose the authors in the references
+#set page(paper: "a4", margin: 2.5cm)
+#set par(justify: true)
+#set heading(numbering: "1.")
+
+#let authors = (
+  "Leonhard Euler",
+  "Emmy Noether",
+  "David Chillbert",
+)
+
+#align(center)[
+  #text(17pt, weight: "bold")[A Paper With All First Authors]
+  #v(1em)
+  #text(12pt, eqa-authors(authors))
+  #v(0.5em)
+  #text(10pt, datetime.today().display())
+]
+
+#v(1em)
+
+= Introduction
+
+The superimposition standard @demaine2023every removes author order but leaves
+author width, which the reader still reads as a ranking. Equalising the widths
+closes that gap.
+
+= Citations
+
+The standard applies to references and bibliographies too, @demaine2023every, for instance:
+
+#bibliography("sources.bib", style: "lib/equalauthors.csl")
+```
 
 ## Layout
 
@@ -49,7 +118,15 @@ It ships as a LaTeX package, a Typst package, a paper, and a Lean proof of every
 | `\equalauthorsSetup{...}`     | Set options (below)                     |
 | `\equalauthorsClear`          | Empty the author list                   |
 
-To superimpose cited authors too, wrap the `.bib` author field in an extra pair of braces:
+With biblatex, cited authors are superimposed automatically, in the bibliography and in `\citeauthor`, from a plain `.bib` file. Author lists are never cut to "et al.".
+
+```latex
+\usepackage{equalauthors}
+\usepackage[backend=biber]{biblatex}
+\addbibresource{sources.bib}
+```
+
+With plain BibTeX, wrap the `.bib` author field in an extra pair of braces instead:
 
 ```bibtex
 author = {{\equalauthorsList{Erik D. Demaine and Martin L. Demaine}}}
