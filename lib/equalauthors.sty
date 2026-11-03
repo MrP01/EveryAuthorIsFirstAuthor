@@ -111,9 +111,11 @@
     \equalauthors_measure:Nn \l_equalauthors_tmp_fp { 1000 }
     \fp_set:Nn \l_equalauthors_g_fp
       { ( \l_equalauthors_tmp_fp - \l_equalauthors_w_fp ) / \l_equalauthors_em_fp }
-    % a single letter measures 0 up to rounding noise; make it exactly 0
+    % a single letter measures 0 up to rounding noise, and a box with no
+    % letters, such as a nested \equalauthorsList, measures -1 (only the edge
+    % kerns of \equalauthors_textls:nn remain); both have no gaps
     \fp_set:Nn \l_equalauthors_g_fp
-      { abs ( \l_equalauthors_g_fp ) < 0.001 ? 0 : \l_equalauthors_g_fp }
+      { \l_equalauthors_g_fp < 0.001 ? 0 : \l_equalauthors_g_fp }
     % no tracking is the same as no gaps: K = w^2/alpha, t = 0, s = W/w
     \bool_if:NT \l_equalauthors_fix_t_bool { \fp_zero:N \l_equalauthors_g_fp }
     \fp_set:Nn \l_equalauthors_e_fp
@@ -226,6 +228,9 @@
 \cs_new_protected:Npn \equalauthors_block:
   {
     \equalauthors_optimal_width:
+    % start a paragraph first, or e.g. right after \bibitem the box would
+    % land on the vertical list above the label
+    \mode_leave_vertical:
     \hbox_to_wd:nn { \fp_to_dim:n { \l_equalauthors_W_fp } }
       { \seq_map_inline:Nn \l_equalauthors_list_seq
           { \hbox_overlap_right:n { \equalauthors_one:n {##1} } } \hss }
@@ -295,3 +300,52 @@
       }
   \group_end:
   \tl_use:N \g_equalauthors_row_tl }
+
+%% ---- biblatex: superimpose every author list automatically --------------
+% With biblatex loaded, plain .bib names need no wrapping: the author list of
+% every entry, and \citeauthor, come out superimposed.  Old-style wrapped
+% fields, {{\equalauthorsList{A and B}}}, still work: biber reads them as one
+% name, which is printed as is.
+\seq_new:N \g_equalauthors_bib_seq
+\tl_new:N \l_equalauthors_bib_tl
+% append one biblatex name part, e.g. \namepartgiven, space-separated
+\cs_new_protected:Npn \equalauthors_bib_part:N #1
+  {
+    \tl_if_empty:NF #1
+      {
+        \tl_if_empty:NF \l_equalauthors_bib_tl
+          { \tl_put_right:Nn \l_equalauthors_bib_tl { ~ } }
+        \tl_put_right:No \l_equalauthors_bib_tl {#1}
+      }
+  }
+% name format: collect "Given prefix Family suffix", print the block at the end
+\cs_new_protected:Npn \equalauthors_bib_name:
+  {
+    \int_compare:nNnT { \value{listcount} } = { \value{liststart} }
+      { \seq_gclear:N \g_equalauthors_bib_seq }
+    \tl_clear:N \l_equalauthors_bib_tl
+    \equalauthors_bib_part:N \namepartgiven
+    \equalauthors_bib_part:N \namepartprefix
+    \equalauthors_bib_part:N \namepartfamily
+    \equalauthors_bib_part:N \namepartsuffix
+    \seq_gput_right:NV \g_equalauthors_bib_seq \l_equalauthors_bib_tl
+    \int_compare:nNnT { \value{listcount} } = { \value{liststop} }
+      {
+        \group_begin:
+          \seq_set_eq:NN \l_equalauthors_list_seq \g_equalauthors_bib_seq
+          \equalauthors_block:
+        \group_end:
+      }
+  }
+\AddToHook { begindocument / before }
+  {
+    \IfPackageLoadedT { biblatex }
+      {
+        \DeclareNameFormat { equalauthors } { \equalauthors_bib_name: }
+        \DeclareNameAlias { author } { equalauthors }
+        \DeclareNameAlias { labelname } { equalauthors }
+        % "et al." would rank the first author again, so never truncate
+        \AtEveryBibitem { \setcounter { maxnames } { 999 } }
+        \AtEveryCitekey { \setcounter { maxnames } { 999 } }
+      }
+  }

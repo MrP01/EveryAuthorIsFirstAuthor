@@ -9,6 +9,9 @@
 \def\input@path{{../lib/}{lib/}}
 \makeatother
 \usepackage{equalauthors}
+\usepackage[backend=biber, style=numeric]{biblatex}
+% sources.bib from demo/, demo/sources.bib from the project root (Overleaf)
+\IfFileExists{sources.bib}{\addbibresource{sources.bib}}{\addbibresource{demo/sources.bib}}
 
 \equalauthorsSetup{alpha=1, beta=1}
 \equalauthorsAddAuthor{Peter Waldert}
@@ -33,5 +36,7 @@
 
   The same works for a BibTeX-style name list:
   \equalauthorsList{Erik D. Demaine and Martin L. Demaine}.
+  Cited works get the same treatment~\cite{demaine2023every}.
 
+  \printbibliography
 \end{document}
