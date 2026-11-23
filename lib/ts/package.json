@@ -1,0 +1,18 @@
+{
+  "name": "equalauthors",
+  "module": "equalauthors.ts",
+  "type": "module",
+  "scripts": {
+    "typecheck": "bun check"
+  },
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^7"
+  },
+  "dependencies": {
+    "@chenglou/pretext": "^1.0.0",
+    "@marijn/find-cluster-break": "^1.0.4"
+  }
+}
